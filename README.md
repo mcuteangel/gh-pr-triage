@@ -16,10 +16,10 @@ Clone this repo directly into your MimoCode or OpenCode skills directory:
 
 ```bash
 # MimoCode
-git clone https://github.com/YOUR_USERNAME/gh-pr-triage.git ~/.local/share/mimocode/skills/gh-pr-triage
+git clone https://github.com/mcuteangel/gh-pr-triage.git ~/.local/share/mimocode/skills/gh-pr-triage
 
 # OpenCode / Codex
-git clone https://github.com/YOUR_USERNAME/gh-pr-triage.git ~/.opencode/skills/gh-pr-triage
+git clone https://github.com/mcuteangel/gh-pr-triage.git ~/.opencode/skills/gh-pr-triage
 ```
 
 No dependencies beyond Python 3.8+ and an authenticated `gh` CLI.
