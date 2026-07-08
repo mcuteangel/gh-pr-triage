@@ -1,12 +1,8 @@
 ---
 name: gh-pr-triage
-description: >
-  Fetch and triage GitHub Pull Request comments intelligently with full pagination,
-  differential scanning, and state tracking. Use when the user provides a GitHub PR
-  context (URL, owner/repo/number) and wants to understand review comments, filter
-  resolved items, or get a structured summary of feedback. Triggers on mentions of
-  "PR comments", "review feedback", "triage PR", "fetch PR comments", or when a
-  GitHub PR URL is provided.
+description: 'Fetch and triage GitHub Pull Request comments intelligently with full pagination, differential scanning, and state tracking. Use when the user provides a GitHub PR context (URL, owner/repo/number) and wants to understand review comments, filter resolved items, or get a structured summary of feedback. Triggers on mentions of "PR comments", "review feedback", "triage PR", "fetch PR comments", or when a GitHub PR URL is provided.'
+license: MIT
+allowed-tools: Bash
 ---
 
 # GitHub PR Comment Triage
