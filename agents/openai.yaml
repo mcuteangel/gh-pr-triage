@@ -1,0 +1,3 @@
+display_name: GitHub PR Comment Triage
+short_description: Fetch and triage GitHub PR comments with pagination, filtering, and state tracking
+default_prompt: Fetch all comments from PR {owner}/{repo}#{number} and provide a structured triage summary with active findings, discussions, and resolved items.
