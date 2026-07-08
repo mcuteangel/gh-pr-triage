@@ -467,6 +467,11 @@ class MarkdownFormatter:
 
 
 def main():
+    # Force UTF-8 stdout on Windows (charmap can't encode emoji)
+    if sys.platform == "win32":
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
     parser = argparse.ArgumentParser(
         description="Fetch and triage GitHub PR comments"
     )
