@@ -318,10 +318,16 @@ class CommentProcessor:
 
 
 class MarkdownFormatter:
-    """Formats processed comments into structured Markdown."""
+    """Formats processed comments into structured Markdown with Fix Blocks."""
+
+    BLOCK_SIZE = 5  # findings per Fix Block
 
     def __init__(self, hide_resolved: bool = False):
         self.hide_resolved = hide_resolved
+
+    # ------------------------------------------------------------------
+    # Single-comment renderers
+    # ------------------------------------------------------------------
 
     def _format_comment(self, comment: Dict, comment_type: str = "review") -> str:
         """Format a single comment into Markdown."""
@@ -339,8 +345,7 @@ class MarkdownFormatter:
         created_at = comment.get("created_at", "")
         is_new = comment.get("is_new", False)
 
-        # Build header
-        new_badge = " 🆕" if is_new else ""
+        new_badge = " [NEW]" if is_new else ""
         line_info = f" (line {line})" if line else ""
 
         lines = [
@@ -359,7 +364,7 @@ class MarkdownFormatter:
         created_at = comment.get("created_at", "")
         is_new = comment.get("is_new", False)
 
-        new_badge = " 🆕" if is_new else ""
+        new_badge = " [NEW]" if is_new else ""
 
         lines = [
             f"### Comment by @{user}{new_badge}",
@@ -370,24 +375,78 @@ class MarkdownFormatter:
         ]
         return "\n".join(lines)
 
+    # ------------------------------------------------------------------
+    # Grouping and chunking helpers
+    # ------------------------------------------------------------------
+
     def _group_by_file(self, comments: List[Dict]) -> Dict[str, List[Dict]]:
         """Group review comments by file path."""
-        grouped = {}
+        grouped: Dict[str, List[Dict]] = {}
         for item in comments:
             comment = item["data"]
             path = comment.get("path", "general")
-            if path not in grouped:
-                grouped[path] = []
-            grouped[path].append(item)
+            grouped.setdefault(path, []).append(item)
         return grouped
+
+    def _flatten_findings(self, grouped: Dict[str, List[Dict]]) -> List[Dict]:
+        """Flatten grouped findings into a single list preserving file order."""
+        flat: List[Dict] = []
+        for path in sorted(grouped):
+            for item in grouped[path]:
+                flat.append(item)
+        return flat
+
+    def _chunk(self, items: List[Dict], size: int) -> List[List[Dict]]:
+        """Split items into chunks of `size`."""
+        return [items[i:i + size] for i in range(0, len(items), size)]
+
+    # ------------------------------------------------------------------
+    # Fix Block instruction generator
+    # ------------------------------------------------------------------
+
+    def _fix_block_instruction(
+        self, block_index: int, total_blocks: int, findings_in_block: int
+    ) -> str:
+        """Generate the LLM instruction footer for a Fix Block."""
+        if block_index < total_blocks:
+            next_action = (
+                f"After resolving these {findings_in_block} finding(s), "
+                f"read Fix Block {block_index + 1}/{total_blocks} "
+                f"and repeat the process."
+            )
+        else:
+            next_action = (
+                "This is the final Fix Block. "
+                "After resolving these findings, generate a summary of all changes made."
+            )
+
+        return (
+            f"<!-- FIX_BLOCK {block_index}/{total_blocks} "
+            f"| findings={findings_in_block} -->\n"
+            f"---\n"
+            f"**[LLM INSTRUCTION — Fix Block {block_index}/{total_blocks}]**\n\n"
+            f"Process the {findings_in_block} finding(s) above in this block. "
+            f"For each finding:\n"
+            f"1. Read the linked file and line number.\n"
+            f"2. Understand the reviewer's concern.\n"
+            f"3. Apply the fix directly to the codebase.\n"
+            f"4. Verify the fix compiles/passes tests.\n"
+            f"5. Mark the finding as resolved in your tracking.\n\n"
+            f"{next_action}\n\n"
+            f"<!-- END_FIX_BLOCK -->\n"
+        )
+
+    # ------------------------------------------------------------------
+    # Main format method
+    # ------------------------------------------------------------------
 
     def format(
         self,
         pr_info: Dict,
         categorized: Dict[str, List[Dict]]
     ) -> str:
-        """Format all comments into structured Markdown."""
-        lines = []
+        """Format all comments into structured Markdown with Fix Blocks."""
+        lines: List[str] = []
 
         # Header
         title = pr_info.get("title", "Unknown PR")
@@ -401,31 +460,54 @@ class MarkdownFormatter:
             "",
             f"*Generated at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}*",
             "",
-            "---",
-            ""
         ])
 
-        # Active findings (grouped by file)
+        # Active findings — chunked into Fix Blocks
         active = categorized.get("active", [])
         if active:
+            grouped = self._group_by_file(active)
+            flat = self._flatten_findings(grouped)
+            blocks = self._chunk(flat, self.BLOCK_SIZE)
+            total_blocks = len(blocks)
+
             lines.extend([
-                "## 🚨 New/Active Findings",
-                ""
+                "## Findings",
+                "",
+                f"**{len(active)} active finding(s)** across "
+                f"{len(grouped)} file(s), split into **{total_blocks} Fix Block(s)** "
+                f"of up to {self.BLOCK_SIZE} findings each.",
+                "",
+                "Process each block sequentially. Do NOT skip ahead.",
+                "",
+                "---",
+                "",
             ])
 
-            grouped = self._group_by_file(active)
-            for file_path, items in sorted(grouped.items()):
-                lines.append(f"### 📄 `{file_path}`")
+            for idx, block in enumerate(blocks, start=1):
+                lines.append(f"## Fix Block {idx}/{total_blocks}")
                 lines.append("")
-                for item in items:
-                    lines.append(self._format_comment(item["data"], "review"))
+
+                # Group block findings by file for context
+                block_by_file: Dict[str, List[Dict]] = {}
+                for item in block:
+                    fpath = item["data"].get("path", "general")
+                    block_by_file.setdefault(fpath, []).append(item)
+
+                for fpath, fitems in sorted(block_by_file.items()):
+                    lines.append(f"### `{fpath}`")
+                    lines.append("")
+                    for item in fitems:
+                        lines.append(self._format_comment(item["data"], "review"))
+
+                # Inject LLM instruction
+                lines.append(self._fix_block_instruction(idx, total_blocks, len(block)))
                 lines.append("")
 
         # General discussions
         general = categorized.get("general", [])
         if general:
             lines.extend([
-                "## 💬 General Discussions",
+                "## General Discussions",
                 ""
             ])
             for item in general:
@@ -436,12 +518,11 @@ class MarkdownFormatter:
         resolved = categorized.get("resolved", [])
         if resolved and not self.hide_resolved:
             lines.extend([
-                "## ✅ Resolved/Filtered Items",
+                "## Resolved/Filtered Items",
                 f"*{len(resolved)} resolved comments filtered*",
                 ""
             ])
-            # Just show a brief summary, not full content
-            for item in resolved[:5]:  # Show first 5
+            for item in resolved[:5]:
                 comment = item["data"]
                 path = comment.get("path", "")
                 line = comment.get("original_line") or comment.get("line", "")
