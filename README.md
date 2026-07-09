@@ -103,6 +103,7 @@ python scripts/gh_pr_triage.py <OWNER> <REPO> <PR_NUMBER>
 | `--hide-resolved` | Completely hide resolved items | false |
 | `--json` | Output raw JSON instead of Markdown | false |
 | `--fresh` | Ignore state file, treat all comments as new | false |
+| `--batch-size N` | Findings per Fix Block (1-20) | 5 |
 
 ### Full Examples
 
@@ -211,6 +212,33 @@ When positional arguments are omitted:
 3. `gh pr view --json number --jq .number` — resolves PR number for that branch
 
 Falls back to explicit arguments if any step fails (not in a repo, no origin remote, no PR for branch).
+
+## Fix Blocks (Iterative Processing)
+
+The output is structured into **Fix Blocks** — discrete chunks of findings (default: 5 per block) with embedded LLM instructions. This prevents context window saturation on large PRs.
+
+Each block contains:
+- Up to `--batch-size` findings (grouped by file)
+- A machine-parseable `<!-- FIX_BLOCK N/M -->` marker
+- A step-by-step instruction block telling the LLM how to process the findings
+- A pointer to the next block (or a "generate summary" instruction for the final block)
+
+**Example with `--batch-size 3`:**
+```
+## Fix Block 1/3
+  └─ 3 findings...
+  └─ [LLM INSTRUCTION] → "read Fix Block 2/3 and repeat"
+
+## Fix Block 2/3
+  └─ 3 findings...
+  └─ [LLM INSTRUCTION] → "read Fix Block 3/3 and repeat"
+
+## Fix Block 3/3
+  └─ 1 finding (final)
+  └─ [LLM INSTRUCTION] → "generate a summary of all changes made"
+```
+
+Adjust `--batch-size` based on your context window: smaller blocks (2-3) for tighter budgets, larger (7-10) for generous ones.
 
 ## State Tracking
 

@@ -320,10 +320,11 @@ class CommentProcessor:
 class MarkdownFormatter:
     """Formats processed comments into structured Markdown with Fix Blocks."""
 
-    BLOCK_SIZE = 5  # findings per Fix Block
+    DEFAULT_BLOCK_SIZE = 5
 
-    def __init__(self, hide_resolved: bool = False):
+    def __init__(self, hide_resolved: bool = False, block_size: int = 5):
         self.hide_resolved = hide_resolved
+        self.block_size = max(1, min(block_size, 20))
 
     # ------------------------------------------------------------------
     # Single-comment renderers
@@ -467,7 +468,7 @@ class MarkdownFormatter:
         if active:
             grouped = self._group_by_file(active)
             flat = self._flatten_findings(grouped)
-            blocks = self._chunk(flat, self.BLOCK_SIZE)
+            blocks = self._chunk(flat, self.block_size)
             total_blocks = len(blocks)
 
             lines.extend([
@@ -475,7 +476,7 @@ class MarkdownFormatter:
                 "",
                 f"**{len(active)} active finding(s)** across "
                 f"{len(grouped)} file(s), split into **{total_blocks} Fix Block(s)** "
-                f"of up to {self.BLOCK_SIZE} findings each.",
+                f"of up to {self.block_size} findings each.",
                 "",
                 "Process each block sequentially. Do NOT skip ahead.",
                 "",
@@ -579,6 +580,13 @@ def main():
         action="store_true",
         help="Output raw JSON instead of Markdown"
     )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=5,
+        metavar="N",
+        help="Findings per Fix Block (1-20, default: 5)"
+    )
 
     args = parser.parse_args()
 
@@ -616,7 +624,7 @@ def main():
             }
         }, indent=2)
     else:
-        formatter = MarkdownFormatter(args.hide_resolved)
+        formatter = MarkdownFormatter(args.hide_resolved, block_size=args.batch_size)
         output = formatter.format(pr_info, categorized)
 
     # Write output
